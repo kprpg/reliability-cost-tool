@@ -27,3 +27,5 @@ obj/
 
 # VS directories
 .vs/
+
+.fake
