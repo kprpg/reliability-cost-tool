@@ -1,0 +1,184 @@
+﻿@page "/"
+
+<PageTitle>Reliability Cost Tool</PageTitle>
+
+<section class="hero-panel">
+	<div>
+		<p class="eyebrow">Azure reliability remediation estimator</p>
+		<h1>Upload an assessment workbook and generate a costed remediation report.</h1>
+		<p class="hero-copy">
+			The tool scans Excel rows for reliability gaps such as missing zone redundancy, missing high availability,
+			backup gaps, and site recovery gaps. It then creates a new workbook with category-specific tabs and
+			estimated monthly remediation costs.
+		</p>
+	</div>
+	<div class="hero-stat-grid">
+		<div class="stat-card">
+			<span class="stat-label">Input</span>
+			<strong>Excel assessment</strong>
+		</div>
+		<div class="stat-card">
+			<span class="stat-label">Output</span>
+			<strong>Per-resource report</strong>
+		</div>
+		<div class="stat-card">
+			<span class="stat-label">Pricing</span>
+			<strong>Azure Retail Prices API</strong>
+		</div>
+	</div>
+</section>
+
+<section class="workspace-panel">
+	<div class="upload-panel">
+		<label class="upload-label" for="assessment-file">Assessment workbook</label>
+		<InputFile id="assessment-file" OnChange="AnalyzeAsync" accept=".xls,.xlsx" />
+		<p class="upload-hint">Supported inputs: .xls and .xlsx. Output is generated as .xlsx.</p>
+
+		@if (IsBusy)
+		{
+			<p class="status-banner">Analyzing workbook, matching pricing, and building the output report.</p>
+		}
+
+		@if (!string.IsNullOrWhiteSpace(StatusMessage))
+		{
+			<p class="status-banner">@StatusMessage</p>
+		}
+
+		@if (!string.IsNullOrWhiteSpace(ErrorMessage))
+		{
+			<p class="error-banner">@ErrorMessage</p>
+		}
+
+		<div class="log-panel">
+			<div class="log-panel-header">
+				<strong>Processing Log</strong>
+				<span>@ProcessingLog.Count @(ProcessingLog.Count == 1 ? "entry" : "entries")</span>
+			</div>
+			@if (ProcessingLog.Count == 0)
+			{
+				<p class="log-empty">No upload activity yet.</p>
+			}
+			else
+			{
+				<ul class="log-list">
+					@foreach (var entry in ProcessingLog)
+					{
+						<li>@entry</li>
+					}
+				</ul>
+			}
+		</div>
+	</div>
+
+	@if (Workbook is not null)
+	{
+		<div class="results-panel">
+			@if (HasUnavailablePricing)
+			{
+				<p class="warning-banner">@PricingWarningMessage</p>
+			}
+
+			<div class="summary-grid">
+				<div class="summary-card">
+					<span>Rows analyzed</span>
+					<strong>@Workbook.AnalysisResult.Records.Count</strong>
+				</div>
+				<div class="summary-card">
+					<span>Findings</span>
+					<strong>@Workbook.AnalysisResult.TotalFindings</strong>
+				</div>
+				<div class="summary-card summary-card-accent">
+					<span>Estimated monthly remediation cost</span>
+					<strong>@Workbook.AnalysisResult.TotalEstimatedMonthlyCost.ToString("C")</strong>
+				</div>
+			</div>
+
+			<button class="download-button" @onclick="DownloadAsync">Download report workbook</button>
+
+			<table class="results-table">
+				<thead>
+					<tr>
+						<th>Category</th>
+						<th>Total Resources</th>
+						<th>Needing Remediation</th>
+						<th>Price / Remediation</th>
+						<th>Estimated Monthly Cost</th>
+					</tr>
+				</thead>
+				<tbody>
+					@foreach (var category in Workbook.AnalysisResult.FindingsByCategory)
+					{
+						var remediationCount = category.Value.Count;
+						var totalCost = category.Value.Sum(item => item.EstimatedMonthlyCost);
+						var totalResources = Workbook.AnalysisResult.CategoryResourceTypeCounts
+							.GetValueOrDefault(category.Key)?.Values.Sum() ?? remediationCount;
+						var pricePerRemediation = remediationCount > 0 ? totalCost / remediationCount : 0m;
+						<tr>
+							<td>@category.Key</td>
+							<td>@totalResources</td>
+							<td>@remediationCount</td>
+							<td>@pricePerRemediation.ToString("C")</td>
+							<td>@totalCost.ToString("C")</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+
+			<table class="results-table compact-table">
+				<thead>
+					<tr>
+						<th>Resource</th>
+						<th>Type</th>
+						<th>Recommendation</th>
+						<th>Pricing Status</th>
+						<th>Cost</th>
+					</tr>
+				</thead>
+				<tbody>
+					@foreach (var finding in Workbook.AnalysisResult.Findings.Take(10))
+					{
+						<tr>
+							<td>@finding.ResourceName</td>
+							<td>@finding.ResourceCategory</td>
+							<td>@finding.Recommendation</td>
+							<td>@finding.PricingStatus</td>
+							<td>@finding.EstimatedMonthlyCost.ToString("C")</td>
+						</tr>
+					}
+				</tbody>
+			</table>
+
+			@if (AzureSqlResults.Count > 0)
+			{
+				<h2 class="results-heading">Azure SQL DB Output</h2>
+				<table class="results-table">
+					<thead>
+						<tr>
+							<th>Tier</th>
+							<th>Source Sheet</th>
+							<th>Total DBs</th>
+							<th>Missing Zone Redundancy</th>
+							<th>Zone Redundancy Cost</th>
+							<th>Missing Geo-Replication</th>
+							<th>Geo-Replication Cost</th>
+						</tr>
+					</thead>
+					<tbody>
+						@foreach (var row in AzureSqlResults)
+						{
+							<tr>
+								<td>@row.Tier</td>
+								<td>@row.SourceWorksheet</td>
+								<td>@row.TotalDatabases</td>
+								<td>@row.MissingZoneRedundancy</td>
+								<td>@row.ZoneRedundancyCost.ToString("C")</td>
+								<td>@row.MissingGeoReplication</td>
+								<td>@row.GeoReplicationCost.ToString("C")</td>
+							</tr>
+						}
+					</tbody>
+				</table>
+			}
+		</div>
+	}
+</section>
