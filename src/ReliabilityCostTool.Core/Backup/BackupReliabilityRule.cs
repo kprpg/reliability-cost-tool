@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 using ReliabilityCostTool.Core.Utils;
 
 namespace ReliabilityCostTool.Core.Backup;
 
-public sealed class BackupReliabilityRule : IReliabilityRule
+public sealed class BackupReliabilityRule(ILogger<BackupReliabilityRule> logger) : IReliabilityRule
 {
     public string CategoryName => "Backup";
 
@@ -18,9 +19,11 @@ public sealed class BackupReliabilityRule : IReliabilityRule
     {
         if (!AssessmentHeuristics.IndicatesReliabilityGap(record, ColumnAliases.ReliabilitySignals))
         {
+            logger.LogDebug("No reliability gap detected for backup {ResourceName}, skipping", record.ResourceName);
             return [];
         }
 
+        logger.LogInformation("Evaluating backup reliability for {ResourceName} in {Region}", record.ResourceName, record.Region);
         var capacityGb = AssessmentHeuristics.ExtractCapacityGb(record) ?? 100m;
         const string serviceName = "Backup";
         var price = await priceCatalogClient.FindBestPriceAsync(
@@ -33,6 +36,15 @@ public sealed class BackupReliabilityRule : IReliabilityRule
         var estimatedMonthlyCost = (price?.UnitPrice ?? 0m) > 0m
             ? price!.UnitPrice * capacityGb
             : 0m;
+
+        if (price is null)
+        {
+            logger.LogWarning("No price match found for backup {ResourceName} (region={Region})", record.ResourceName, record.Region);
+        }
+        else
+        {
+            logger.LogInformation("Backup {ResourceName} matched price {UnitPrice} {Currency}/GB, capacity {CapacityGb} GB, estimated monthly cost {MonthlyCost:C}", record.ResourceName, price.UnitPrice, price.CurrencyCode, capacityGb, estimatedMonthlyCost);
+        }
 
         return
         [

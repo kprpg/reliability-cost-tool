@@ -217,15 +217,15 @@ public class ReliabilityAssessmentTests
         return new ReliabilityAssessmentService(
             new AssessmentWorkbookParser(NullLogger<AssessmentWorkbookParser>.Instance),
             [
-                new VmReliabilityRule(),
-                new StorageReliabilityRule(),
-                new DatabaseReliabilityRule(),
-                new AzureSqlDatabaseReliabilityRule(),
-                new BackupReliabilityRule(),
-                new SiteRecoveryRule()
+                new VmReliabilityRule(NullLogger<VmReliabilityRule>.Instance),
+                new StorageReliabilityRule(NullLogger<StorageReliabilityRule>.Instance),
+                new DatabaseReliabilityRule(NullLogger<DatabaseReliabilityRule>.Instance),
+                new AzureSqlDatabaseReliabilityRule(NullLogger<AzureSqlDatabaseReliabilityRule>.Instance),
+                new BackupReliabilityRule(NullLogger<BackupReliabilityRule>.Instance),
+                new SiteRecoveryRule(NullLogger<SiteRecoveryRule>.Instance)
             ],
             new FakePriceCatalogClient(),
-            new WorkbookReportBuilder(),
+            new WorkbookReportBuilder(NullLogger<WorkbookReportBuilder>.Instance),
             NullLogger<ReliabilityAssessmentService>.Instance);
     }
 

@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 using ReliabilityCostTool.Core.Utils;
 
 namespace ReliabilityCostTool.Core.AzureSqlDatabases;
 
-public sealed class AzureSqlDatabaseReliabilityRule : IReliabilityRule
+public sealed class AzureSqlDatabaseReliabilityRule(ILogger<AzureSqlDatabaseReliabilityRule> logger) : IReliabilityRule
 {
     public string CategoryName => "Databases";
 
@@ -19,8 +20,11 @@ public sealed class AzureSqlDatabaseReliabilityRule : IReliabilityRule
     {
         if (!TryReadCounts(record, out var totalDatabases, out var zoneRedundantDatabases, out var geoReplicatedDatabases))
         {
+            logger.LogDebug("Could not read Azure SQL DB counts for {ResourceName}, skipping", record.ResourceName);
             return [];
         }
+
+        logger.LogInformation("Evaluating Azure SQL DB reliability for {ResourceName}: total={TotalDbs}, zoneRedundant={ZoneDbs}, geoReplicated={GeoDbs}", record.ResourceName, totalDatabases, zoneRedundantDatabases, geoReplicatedDatabases);
 
         var findings = new List<ReliabilityFinding>();
         var nonZoneRedundantDatabases = Math.Max(0m, totalDatabases - zoneRedundantDatabases);
@@ -33,6 +37,15 @@ public sealed class AzureSqlDatabaseReliabilityRule : IReliabilityRule
             record.Sku,
             cancellationToken);
         var baseMonthlyCost = price is null ? 0m : price.UnitPrice * 730m;
+
+        if (price is null)
+        {
+            logger.LogWarning("No price match for Azure SQL DB {ResourceName} (region={Region}, sku={Sku})", record.ResourceName, record.Region, record.Sku);
+        }
+        else
+        {
+            logger.LogInformation("Azure SQL DB {ResourceName} matched price {UnitPrice} {Currency}/hr, base monthly cost {BaseMonthlyCost:C}", record.ResourceName, price.UnitPrice, price.CurrencyCode, baseMonthlyCost);
+        }
 
         if (nonZoneRedundantDatabases > 0m)
         {

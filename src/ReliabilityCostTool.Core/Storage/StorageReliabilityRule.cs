@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 using ReliabilityCostTool.Core.Utils;
 
 namespace ReliabilityCostTool.Core.Storage;
 
-public sealed class StorageReliabilityRule : IReliabilityRule
+public sealed class StorageReliabilityRule(ILogger<StorageReliabilityRule> logger) : IReliabilityRule
 {
     public string CategoryName => "Storage";
 
@@ -23,9 +24,11 @@ public sealed class StorageReliabilityRule : IReliabilityRule
     {
         if (!AssessmentHeuristics.IndicatesReliabilityGap(record, ColumnAliases.ReliabilitySignals))
         {
+            logger.LogDebug("No reliability gap detected for storage {ResourceName}, skipping", record.ResourceName);
             return [];
         }
 
+        logger.LogInformation("Evaluating storage reliability for {ResourceName} in {Region}", record.ResourceName, record.Region);
         var capacityGb = AssessmentHeuristics.ExtractCapacityGb(record) ?? 1m;
         const string serviceName = "Storage";
         const string meterHint = "ZRS";
@@ -39,6 +42,15 @@ public sealed class StorageReliabilityRule : IReliabilityRule
         var estimatedMonthlyCost = (price?.UnitPrice ?? 0m) > 0m
             ? price!.UnitPrice * capacityGb
             : 0m;
+
+        if (price is null)
+        {
+            logger.LogWarning("No price match found for storage {ResourceName} (service={ServiceName}, region={Region})", record.ResourceName, serviceName, record.Region);
+        }
+        else
+        {
+            logger.LogInformation("Storage {ResourceName} matched price {UnitPrice} {Currency}/GB, capacity {CapacityGb} GB, estimated monthly cost {MonthlyCost:C}", record.ResourceName, price.UnitPrice, price.CurrencyCode, capacityGb, estimatedMonthlyCost);
+        }
 
         return
         [

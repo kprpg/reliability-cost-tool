@@ -8,6 +8,7 @@ using Microsoft.Extensions.ServiceDiscovery;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Trace;
+using ReliabilityCostTool.ServiceDefaults;
 
 namespace Microsoft.Extensions.Hosting;
 
@@ -21,6 +22,7 @@ public static class Extensions
     {
         builder.ConfigureOpenTelemetry();
         builder.AddDefaultHealthChecks();
+        builder.AddFileLogging();
 
         builder.Services.AddServiceDiscovery();
 
@@ -98,5 +100,13 @@ public static class Extensions
         }
 
         return app;
+    }
+
+    private static TBuilder AddFileLogging<TBuilder>(this TBuilder builder)
+        where TBuilder : IHostApplicationBuilder
+    {
+        var logDirectory = Path.Combine(builder.Environment.ContentRootPath, "logs");
+        builder.Logging.AddProvider(new FileLoggerProvider(logDirectory));
+        return builder;
     }
 }

@@ -49,26 +49,6 @@
 			{
 				<p class="error-banner">@ErrorMessage</p>
 			}
-
-			<div class="log-panel">
-				<div class="log-panel-header">
-					<strong>Processing Log</strong>
-					<span>@ProcessingLog.Count @(ProcessingLog.Count == 1 ? "entry" : "entries")</span>
-				</div>
-				@if (ProcessingLog.Count == 0)
-				{
-					<p class="log-empty">No upload activity yet.</p>
-				}
-				else
-				{
-					<ul class="log-list">
-						@foreach (var entry in ProcessingLog)
-						{
-							<li>@entry</li>
-						}
-					</ul>
-				}
-			</div>
 		</div>
 
 		@if (Workbook is not null)

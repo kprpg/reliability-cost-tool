@@ -29,15 +29,11 @@ public partial class Home : ComponentBase
 
     protected GeneratedWorkbook? Workbook { get; set; }
 
-    protected IReadOnlyList<string> ProcessingLog => _processingLog;
-
     protected IReadOnlyList<AzureSqlResultRow> AzureSqlResults => BuildAzureSqlResults();
 
     protected bool HasUnavailablePricing => Workbook?.AnalysisResult.PricingUnavailableFindings > 0;
 
     protected string PricingWarningMessage => BuildPricingWarningMessage();
-
-    private readonly List<string> _processingLog = [];
 
     protected async Task AnalyzeAsync(InputFileChangeEventArgs eventArgs)
     {
@@ -45,47 +41,42 @@ public partial class Home : ComponentBase
         StatusMessage = null;
         Workbook = null;
         IsBusy = true;
-        _processingLog.Clear();
-        AddLog("Upload event received.");
+        Logger.LogInformation("Upload event received");
         await InvokeAsync(StateHasChanged);
 
         try
         {
             var file = eventArgs.File;
-            AddLog($"Selected file: {file.Name} ({file.Size:N0} bytes).");
-            Logger.LogInformation("File upload selected: {FileName}, size {FileSize}", file.Name, file.Size);
+            Logger.LogInformation("File upload selected: {FileName}, size {FileSize} bytes", file.Name, file.Size);
             StatusMessage = $"Uploading {file.Name}...";
             await InvokeAsync(StateHasChanged);
 
             await using var source = file.OpenReadStream(MaxUploadSize);
-            AddLog("Opened browser upload stream.");
+            Logger.LogInformation("Opened browser upload stream for {FileName}", file.Name);
             await using var buffer = new MemoryStream();
             await source.CopyToAsync(buffer);
-            AddLog($"Copied upload stream into memory buffer ({buffer.Length:N0} bytes).");
+            Logger.LogInformation("Copied upload stream into memory buffer ({ByteCount} bytes) for {FileName}", buffer.Length, file.Name);
             buffer.Position = 0;
             StatusMessage = "Workbook uploaded. Starting parser and analysis.";
             await InvokeAsync(StateHasChanged);
 
             Workbook = await AssessmentService.AnalyzeAsync(buffer, file.Name);
             StatusMessage = $"Workbook read successfully. Parsed {Workbook.AnalysisResult.Records.Count} records and generated {Workbook.AnalysisResult.TotalFindings} findings.";
-            AddLog(StatusMessage);
-            AddLog($"Azure SQL DB result rows available on page: {AzureSqlResults.Count}.");
             Logger.LogInformation(
-                "Workbook {FileName} analyzed successfully. Records={RecordCount}, Findings={FindingCount}",
+                "Workbook {FileName} analyzed successfully. Records={RecordCount}, Findings={FindingCount}, AzureSqlRows={AzureSqlCount}",
                 file.Name,
                 Workbook.AnalysisResult.Records.Count,
-                Workbook.AnalysisResult.TotalFindings);
+                Workbook.AnalysisResult.TotalFindings,
+                AzureSqlResults.Count);
         }
         catch (WorkbookReadException exception)
         {
             ErrorMessage = exception.Message;
-            AddLog($"Workbook read failed: {exception.Message}");
             Logger.LogWarning(exception, "Workbook read failed in UI workflow");
         }
         catch (Exception exception)
         {
             ErrorMessage = exception.Message;
-            AddLog($"Unexpected failure: {exception.Message}");
             Logger.LogError(exception, "Unexpected failure while analyzing workbook");
         }
         finally
@@ -108,15 +99,7 @@ public partial class Home : ComponentBase
             Workbook.ContentType,
             Convert.ToBase64String(Workbook.Content));
 
-        AddLog($"Downloaded output workbook {Workbook.FileName}.");
         Logger.LogInformation("Output workbook {OutputFileName} downloaded", Workbook.FileName);
-    }
-
-    private void AddLog(string message)
-    {
-        var entry = $"{DateTime.Now:HH:mm:ss}  {message}";
-        _processingLog.Add(entry);
-        Logger.LogInformation("UI workflow: {WorkflowMessage}", message);
     }
 
     private IReadOnlyList<AzureSqlResultRow> BuildAzureSqlResults()

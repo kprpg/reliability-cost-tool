@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 using ReliabilityCostTool.Core.Utils;
 
 namespace ReliabilityCostTool.Core.Compute;
 
-public sealed class VmReliabilityRule : IReliabilityRule
+public sealed class VmReliabilityRule(ILogger<VmReliabilityRule> logger) : IReliabilityRule
 {
     public string CategoryName => "Compute";
 
@@ -22,9 +23,11 @@ public sealed class VmReliabilityRule : IReliabilityRule
     {
         if (!AssessmentHeuristics.IndicatesReliabilityGap(record, ColumnAliases.ReliabilitySignals))
         {
+            logger.LogDebug("No reliability gap detected for VM {ResourceName}, skipping", record.ResourceName);
             return [];
         }
 
+        logger.LogInformation("Evaluating VM reliability for {ResourceName} in {Region} with SKU {Sku}", record.ResourceName, record.Region, record.Sku);
         var instanceCount = AssessmentHeuristics.ExtractQuantity(record);
         const string serviceName = "Virtual Machines";
         var price = await priceCatalogClient.FindBestPriceAsync(
@@ -37,6 +40,15 @@ public sealed class VmReliabilityRule : IReliabilityRule
         var estimatedMonthlyCost = (price?.UnitPrice ?? 0m) > 0m
             ? price!.UnitPrice * 730m * instanceCount
             : 0m;
+
+        if (price is null)
+        {
+            logger.LogWarning("No price match found for VM {ResourceName} (service={ServiceName}, region={Region}, sku={Sku})", record.ResourceName, serviceName, record.Region, record.Sku);
+        }
+        else
+        {
+            logger.LogInformation("VM {ResourceName} matched price {UnitPrice} {Currency}/hr, estimated monthly cost {MonthlyCost:C}", record.ResourceName, price.UnitPrice, price.CurrencyCode, estimatedMonthlyCost);
+        }
 
         return
         [

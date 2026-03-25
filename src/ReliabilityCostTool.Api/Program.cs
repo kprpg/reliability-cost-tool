@@ -44,16 +44,23 @@ app.MapPost("/api/reports/analyze", async (
     IFormFile file,
     IReliabilityAssessmentService assessmentService,
     GeneratedReportStore reportStore,
+    ILogger<Program> logger,
     CancellationToken cancellationToken) =>
 {
     if (file.Length == 0)
     {
+        logger.LogWarning("Received empty file upload");
         return Results.BadRequest("The uploaded workbook is empty.");
     }
+
+    logger.LogInformation("API: Analyze request received for file {FileName} ({FileSize} bytes)", file.FileName, file.Length);
 
     await using var stream = file.OpenReadStream();
     var workbook = await assessmentService.AnalyzeAsync(stream, file.FileName, cancellationToken);
     var reportId = reportStore.Save(workbook);
+
+    logger.LogInformation("API: Analysis complete for {FileName}. ReportId={ReportId}, Records={RecordCount}, Findings={FindingsCount}, EstimatedCost={EstimatedCost:C}",
+        file.FileName, reportId, workbook.AnalysisResult.Records.Count, workbook.AnalysisResult.TotalFindings, workbook.AnalysisResult.TotalEstimatedMonthlyCost);
 
     var response = new AnalyzeResponse
     {
@@ -76,13 +83,17 @@ app.MapPost("/api/reports/analyze", async (
 })
 .DisableAntiforgery();
 
-app.MapGet("/api/reports/{reportId}/download", (string reportId, GeneratedReportStore reportStore) =>
+app.MapGet("/api/reports/{reportId}/download", (string reportId, GeneratedReportStore reportStore, ILogger<Program> logger) =>
 {
+    logger.LogInformation("API: Download request for report {ReportId}", reportId);
+
     if (!reportStore.TryGet(reportId, out var workbook) || workbook is null)
     {
+        logger.LogWarning("API: Report {ReportId} not found for download", reportId);
         return Results.NotFound();
     }
 
+    logger.LogInformation("API: Serving report {ReportId} as {FileName} ({ByteCount} bytes)", reportId, workbook.FileName, workbook.Content.Length);
     return Results.File(workbook.Content, workbook.ContentType, workbook.FileName);
 });
 

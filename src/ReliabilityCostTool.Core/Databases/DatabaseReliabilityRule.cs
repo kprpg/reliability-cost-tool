@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 using ReliabilityCostTool.Core.Utils;
 
 namespace ReliabilityCostTool.Core.Databases;
 
-public sealed class DatabaseReliabilityRule : IReliabilityRule
+public sealed class DatabaseReliabilityRule(ILogger<DatabaseReliabilityRule> logger) : IReliabilityRule
 {
     public string CategoryName => "Databases";
 
@@ -25,10 +26,12 @@ public sealed class DatabaseReliabilityRule : IReliabilityRule
     {
         if (!AssessmentHeuristics.IndicatesReliabilityGap(record, ColumnAliases.ReliabilitySignals))
         {
+            logger.LogDebug("No reliability gap detected for database {ResourceName}, skipping", record.ResourceName);
             return [];
         }
 
         var serviceName = ResolveServiceName(record.ResourceType);
+        logger.LogInformation("Evaluating database reliability for {ResourceName} (service={ServiceName}, region={Region})", record.ResourceName, serviceName, record.Region);
         var price = await priceCatalogClient.FindBestPriceAsync(
             serviceName,
             record.Region,
@@ -39,6 +42,15 @@ public sealed class DatabaseReliabilityRule : IReliabilityRule
         var estimatedMonthlyCost = (price?.UnitPrice ?? 0m) > 0m
             ? price!.UnitPrice * 730m
             : 0m;
+
+        if (price is null)
+        {
+            logger.LogWarning("No price match found for database {ResourceName} (service={ServiceName}, region={Region})", record.ResourceName, serviceName, record.Region);
+        }
+        else
+        {
+            logger.LogInformation("Database {ResourceName} matched price {UnitPrice} {Currency}/hr, estimated monthly cost {MonthlyCost:C}", record.ResourceName, price.UnitPrice, price.CurrencyCode, estimatedMonthlyCost);
+        }
 
         return
         [

@@ -1,12 +1,13 @@
 using System.Text;
 using ClosedXML.Excel;
 using ExcelDataReader;
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 
 namespace ReliabilityCostTool.Core.General.Reports;
 
-public sealed class WorkbookReportBuilder : IWorkbookReportBuilder
+public sealed class WorkbookReportBuilder(ILogger<WorkbookReportBuilder> logger) : IWorkbookReportBuilder
 {
     public Task<GeneratedWorkbook> BuildAsync(
         AnalysisResult analysisResult,
@@ -14,6 +15,9 @@ public sealed class WorkbookReportBuilder : IWorkbookReportBuilder
         CancellationToken cancellationToken = default)
     {
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+        logger.LogInformation("Building report for {InputFileName} with {FindingCount} findings across {CategoryCount} categories",
+            analysisResult.InputFileName, analysisResult.TotalFindings, analysisResult.FindingsByCategory.Count);
 
         using var workbook = BuildWorkbookWithSourceSheets(sourceWorkbookContent);
         BuildSummarySheet(workbook, analysisResult);
@@ -34,6 +38,9 @@ public sealed class WorkbookReportBuilder : IWorkbookReportBuilder
         workbook.SaveAs(stream);
 
         var outputName = $"{Path.GetFileNameWithoutExtension(analysisResult.InputFileName)}-reliability-remediation-report.xlsx";
+        logger.LogInformation("Report workbook generated: {OutputFileName} ({ByteCount} bytes, {SheetCount} sheets)",
+            outputName, stream.Length, workbook.Worksheets.Count);
+
         return Task.FromResult(new GeneratedWorkbook
         {
             AnalysisResult = analysisResult,

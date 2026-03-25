@@ -1,10 +1,11 @@
+using Microsoft.Extensions.Logging;
 using ReliabilityCostTool.Core.Common.Models;
 using ReliabilityCostTool.Core.General.Interfaces;
 using ReliabilityCostTool.Core.Utils;
 
 namespace ReliabilityCostTool.Core.SiteRecovery;
 
-public sealed class SiteRecoveryRule : IReliabilityRule
+public sealed class SiteRecoveryRule(ILogger<SiteRecoveryRule> logger) : IReliabilityRule
 {
     public string CategoryName => "Site Recovery";
 
@@ -19,9 +20,11 @@ public sealed class SiteRecoveryRule : IReliabilityRule
     {
         if (!AssessmentHeuristics.IndicatesReliabilityGap(record, ColumnAliases.ReliabilitySignals))
         {
+            logger.LogDebug("No reliability gap detected for site recovery {ResourceName}, skipping", record.ResourceName);
             return [];
         }
 
+        logger.LogInformation("Evaluating site recovery for {ResourceName} in {Region}", record.ResourceName, record.Region);
         var quantity = AssessmentHeuristics.ExtractQuantity(record);
         const string serviceName = "Azure Site Recovery";
         var price = await priceCatalogClient.FindBestPriceAsync(
@@ -34,6 +37,15 @@ public sealed class SiteRecoveryRule : IReliabilityRule
         var estimatedMonthlyCost = (price?.UnitPrice ?? 0m) > 0m
             ? price!.UnitPrice * quantity
             : 0m;
+
+        if (price is null)
+        {
+            logger.LogWarning("No price match found for site recovery {ResourceName} (region={Region})", record.ResourceName, record.Region);
+        }
+        else
+        {
+            logger.LogInformation("Site recovery {ResourceName} matched price {UnitPrice} {Currency}/instance, estimated monthly cost {MonthlyCost:C}", record.ResourceName, price.UnitPrice, price.CurrencyCode, estimatedMonthlyCost);
+        }
 
         return
         [
