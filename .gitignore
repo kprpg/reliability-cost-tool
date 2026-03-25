@@ -29,3 +29,5 @@ obj/
 .vs/
 
 .fake
+src/ReliabilityCostTool.Api/logs/log-2026-03-25.log
+src/ReliabilityCostTool.Web/logs/log-2026-03-25.log
